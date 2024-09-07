@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Add Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <!-- Add Bootstrap JS and jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/klinecharts/dist/klinecharts.min.js"></script>
+    <title>Exchange Example</title>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-1">
+                <!-- Left Navbar -->
+            </div>
+            <div class="col-9">
+                <div class="container col-9" style="height: 600px;" id="chart">
+                    <!-- Chart Container -->
+                </div>
+                <div class="row col-9" style="height: 600px;">
+                    <div class="col-3">
+                        <form>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <input type="text" class="form-control" placeholder="Price" name="price">
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <input type="text" class="form-control" placeholder="Amount" name="amount">
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <label class="form-label">Total: <span id="total"></span></label>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col">
+                                    <button type="submit" class="btn btn-success btn-lg btn-block" id="buy">BUY</button>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col">
+                                    <button type="submit" class="btn btn-danger btn-lg btn-block" id="sell">SELL</button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="type" name="type" value="buy">
+                        </form>
+                    </div>
+                    <div class="col-3" id="buy_list">
+                        Buy List:<br />
+                        <ul id="buyList" class="list-group"></ul>
+                    </div>
+                    <div class="col-3" id="sell_list">
+                        Sell List:<br />
+                        <ul id="sellList" class="list-group"></ul>
+                    </div>
+                    <div class="col-3"></div>
+                        <div class="form-container trade-table-container">
+                            <h5>Trade History</h5>
+                            <table class="table table-striped trade-table">
+                                <thead>
+                                    <tr>
+                                        <th>Price</th>
+                                        <th>Amount</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tradeHistoryBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="row" style="height: 600px;">
+                    <!-- Third Row -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化K线图
+        var chart = klinecharts.init('chart');
+
+        // 获取并更新K线图数据
+        function fetchAndUpdateKlineData() {
+            $.getJSON('/trade_period', function (data) {
+                chart.applyNewData(data); // 更新K线图
+            }).fail(function (jqxhr, textStatus, error) {
+                console.error('Error fetching data:', textStatus, error);
+            });
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function updateDataWithDelay() {
+            fetchAndUpdateKlineData();
+    
+            // Sleep for 2 seconds (2000 milliseconds)
+            await sleep(2000);
+    
+            fetchTradeHistory();
+        }
+
+        function fetchTradeHistory() {
+            $.getJSON('/trade_list', function(data) {
+                var tradeHistoryBody = $('#tradeHistoryBody');
+                tradeHistoryBody.empty();
+                data.forEach(function(trade) {
+                tradeHistoryBody.append(
+                '<tr><td>' + trade.trade_price + '</td>' +
+                '<td>' + trade.trade_amount + '</td>' +
+                '<td>' + new Date(trade.trade_timestamp).toLocaleString() + '</td></tr>'
+                        );
+                    });
+                }).fail(function(jqxhr, textStatus, error) {
+                    console.error('Error fetching trade history:', textStatus, error);
+                });
+}
+
+        $(document).ready(function() {
+            $('[name="price"]').val(4979);
+            $('[name="amount"]').val(8);
+
+            var price = parseFloat($('[name="price"]').val());
+            var amount = parseFloat($('[name="amount"]').val());
+            var total = price * amount;
+            $('#total').text(total);
+
+            $('[name="price"], [name="amount"]').on('change', function() {
+                var price = parseFloat($('[name="price"]').val());
+                var amount = parseFloat($('[name="amount"]').val());
+                var total = price * amount;
+                $('#total').text(total);
+            });
+
+            $('#buy').on('click', function(e) {
+                e.preventDefault();
+                $('[name="type"]').val('buy');
+                submitForm();
+            });
+
+            $('#sell').on('click', function(e) {
+                e.preventDefault();
+                $('[name="type"]').val('sell');
+                submitForm();
+            });
+
+            function submitForm() {
+                $.ajax({
+                    url: 'order',
+                    method: 'POST',
+                    data: $('form').serialize(),
+                    success: function(response) {
+                        // Handle success response
+                        console.log(response);
+                    },
+                    error: function(xhr, status, error) {
+                        // Handle error response
+                        console.error(error);
+                    }
+                });
+            }
+
+            // Remove the setInterval function to stop fetching order list every 3 seconds
+            setInterval(function() {
+                var orderType = $('[name="type"]').val();
+                console.log(orderType);
+                $.getJSON('/order_list', { order_type: orderType }, function(data) {
+                    if (orderType === 'buy') {
+                        var buyList = $('#buyList');
+                        buyList.empty();
+                        $.each(data, function(index, item) {
+                            buyList.append('<li class="list-group-item">' + item.order_price + " : " + item.order_amount + '</li>');
+                        });
+                    } else if (orderType === 'sell') {
+                        var sellList = $('#sellList');
+                        sellList.empty();
+                        $.each(data, function(index, item) {
+                            sellList.append('<li class="list-group-item">' + item.order_price + " : " + item.order_amount + '</li>');
+                        });
+                    }
+                });
+            }, 3000);
+            updateDataWithDelay();
+        });
+    </script>
+</body>
+
+</html>
